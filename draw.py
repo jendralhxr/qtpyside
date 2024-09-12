@@ -1,134 +1,162 @@
 import sys
-from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QTextEdit
-from PySide6.QtGui import QPainter, QPen, QColor
-from PySide6.QtCore import Qt
 import math
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit
+from PySide6.QtGui import QPainter, QPen, QPixmap, QColor
+from PySide6.QtCore import Qt, QPoint, Signal, Slot
 
-APP_WIDTH= 640
-APP_HEIGHT= 480
-chaincode=''
+APP_WIDTH = 1024
+APP_HEIGHT = 768
+ARC_DISTANCE= 24
+chaincode = ''
 
+PHI = 1.6180339887498948482  # Golden ratio
 
-PHI= 1.6180339887498948482 # ppl says this is a beautiful number :)
 def freeman(x, y):
-    if (y==0):
-        y=1e-9 # so that we escape the divby0 exception
-    if (x==0):
-        x=-1e-9 # biased to the left as the text progresses leftward
-    if (abs(x/y)<pow(PHI,2)) and (abs(y/x)<pow(PHI,2)): # corner angles
-        if   (x>0) and (y>0):
-            return(1)
-        elif (x<0) and (y>0):
-            return(3)
-        elif (x<0) and (y<0):
-            return(5)
-        elif (x>0) and (y<0):
-            return(7)
-    else: # square angles
-        if   (x>0) and (abs(x)>abs(y)):
-            return(int(0))
-        elif (y>0) and (abs(y)>abs(x)):
-            return(2)
-        elif (x<0) and (abs(x)>abs(y)):
-            return(4)
-        elif (y<0) and (abs(y)>abs(x)):
-            return(6)
+    if (y == 0):
+        y = 1e-9
+    if (x == 0):
+        x = -1e-9
+    if (abs(x / y) < pow(PHI, 2)) and (abs(y / x) < pow(PHI, 2)):  # Corner angles
+        if x > 0 and y > 0:
+            return 1
+        elif x < 0 and y > 0:
+            return 3
+        elif x < 0 and y < 0:
+            return 5
+        elif x > 0 and y < 0:
+            return 7
+    else:  # Square angles
+        if x > 0 and abs(x) > abs(y):
+            return int(0)
+        elif y > 0 and abs(y) > abs(x):
+            return 2
+        elif x < 0 and abs(x) > abs(y):
+            return 4
+        elif y < 0 and abs(y) > abs(x):
+            return 6
 
 def pdistance(point1, point2):
     x1, y1 = point1
     x2, y2 = point2
-    distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-    return distance
+    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
-class CustomTextEdit(QTextEdit):
+class TextEditChain(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setReadOnly(True)  # Make the text edit read-only
+        self.setReadOnly(True)
         self.setMaximumHeight(40)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Q:
-            QApplication.quit()  # Quit when 'Q' is pressed
-        elif event.key() == Qt.Key_C:
-            global chaincode
-            chaincode=''
-            self.setText('')
-        else:
-            super().keyPressEvent(event)  # Default behavior for other keys
-
-class MouseTracker(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.prev_pos= (-1,-1)
-        self.current_pos= (-1,-1)
-        
-        self.setWindowTitle("Mouse Position Tracker with Text Editor")
-        self.setGeometry(100, 100, APP_WIDTH, APP_HEIGHT)
-        self.setMouseTracking(True)
-        self.mouse_position = (0, 0)
-        
-        # Create the layout and add widgets
-        self.layout = QVBoxLayout(self)
-
-        # Create a placeholder widget for mouse tracking
-        self.tracking_area = QWidget(self)
-        self.tracking_area.setMinimumHeight(200)
-
-        # Create the text editor
-        self.text_edit = CustomTextEdit(self)
-        self.text_edit.setPlaceholderText("Freeman chain code goes here")
-
-        # Add widgets to the layout
-        self.layout.addWidget(self.tracking_area)
-        self.layout.addWidget(self.text_edit)
-
-        # Set the layout for the main widget
-        self.setLayout(self.layout)
-
-    def mouseMoveEvent(self, event):
-        # Get mouse position and store it
-        self.mouse_position = (event.x(), event.y())
-        #print(f"Mouse Position: {self.mouse_position}")
-        if self.prev_pos==(-1,-1):
-            self.prev_pos= self.mouse_position
-        self.current_pos= self.mouse_position
-        
-            # draw the line
-    def drawLine(self, painter):
-        if pdistance(self.current_pos, self.prev_pos)>20:
-            code= str(freeman(self.current_pos[0]-self.prev_pos[0], self.prev_pos[1]-self.current_pos[1]))
-            #self.text_edit.setText(f"Mouse Position: {self.mouse_position[0]}, {self.mouse_position[1]}")
-            global chaincode 
-            chaincode += code
-            print(f"from {self.prev_pos} to {self.current_pos}: {chaincode}")
-            self.text_edit.setText(chaincode)
-            painter = QPainter(self)
-            painter.setPen(QPen(Qt.yellow, 10, Qt.SolidLine))  # Black color, 2 pixels width
-            painter.drawLine(self.prev_pos[0], self.prev_pos[1], self.current_pos[0], self.current_pos[1])
-            self.prev_pos= self.current_pos
-
-    def drawPos(self, painter):
-        # Draw the current mouse position
-        painter = QPainter(self)
-        painter.setPen(QPen(Qt.green, 5, Qt.SolidLine))
-        painter.drawText(self.mouse_position[0], self.mouse_position[1], f"({self.mouse_position[0]}, {self.mouse_position[1]})")
-    
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        self.drawLine(painter)
-        self.drawPos(painter)
-        self.update()  # Trigger a redraw of the widget
+        self.setPlaceholderText("Freeman code chain goes here")
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Q:
             QApplication.quit()
         elif event.key() == Qt.Key_C:
-            global chaincode 
-            chaincode='a'
-            self.text_edit.setText('')
+            global chaincode
+            chaincode = ''
+            self.setText('')
+        else:
+            super().keyPressEvent(event)
+
+    @Slot(str)
+    def updateText(self, text):
+        self.setText(text)
+
+class Canvas(QWidget):
+    # Define a custom signal with a string argument
+    customSignal = Signal(str)
+    
+    def __init__(self):
+        super().__init__()
+        self.setAttribute(Qt.WA_StaticContents)
+        self.setStyleSheet("background-color: white;")
+        self.prev_pos = None
+        self.prev_pos_bitmap = (-1, -1)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFixedSize(APP_WIDTH, APP_HEIGHT)
+        self.pixmap = QPixmap(self.size())
+        self.pixmap.fill(QColor(200, 200, 200))
         
+        self.color_map = [
+            Qt.red,
+            QColor(200, 160, 0),  # Orange
+            Qt.yellow,
+            Qt.green,
+            Qt.blue,
+            Qt.cyan,
+            Qt.magenta,
+            QColor(40, 40, 40)  # Gray
+        ]
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.prev_pos = event.pos()
+            self.prev_pos_bitmap = (self.prev_pos.x(), self.prev_pos.y())
+
+    def mouseMoveEvent(self, event):
+        if self.prev_pos is not None:
+            current_pos = (event.pos().x(), event.pos().y())
+            if pdistance(current_pos, self.prev_pos_bitmap) > 30:
+                code = freeman(current_pos[0] - self.prev_pos_bitmap[0], self.prev_pos_bitmap[1] - current_pos[1])
+                global chaincode 
+                chaincode += str(code)
+                self.emitCustomSignal()  # Emit the signal with updated chaincode
+                print(f"from {self.prev_pos_bitmap} to {current_pos}: {chaincode}")
+                self.drawLine(self.prev_pos_bitmap, current_pos, self.color_map[code])
+                self.prev_pos_bitmap = current_pos
+                self.update()
+
+    def drawLine(self, start, stop, color):
+        painter = QPainter(self.pixmap)
+        painter.setPen(QPen(color, 6, Qt.SolidLine))
+        painter.drawLine(QPoint(*start), QPoint(*stop))
+        painter.end()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.prev_pos = None
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.drawPixmap(0, 0, self.pixmap)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Q:
+            QApplication.quit()
+        elif event.key() == Qt.Key_C:
+            global chaincode
+            chaincode = ''
+            self.pixmap.fill(QColor(200, 200, 200))
+            self.update()
+            self.emitCustomSignal()
+    
+    def emitCustomSignal(self):
+        global chaincode 
+        self.customSignal.emit(chaincode)
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Draw Lines with Mouse")
+        
+        # Create the drawing widget and text edit widget
+        self.canvas = Canvas()
+        self.textedit = TextEditChain()
+        
+        # Set up the layout
+        layout = QVBoxLayout()
+        layout.addWidget(self.canvas)
+        layout.addWidget(self.textedit)
+        
+        # Create a central widget and set the layout
+        central_widget = QWidget()
+        central_widget.setLayout(layout)
+        self.setCentralWidget(central_widget)
+
+        # Connect the canvas's custom signal to the text edit's updateText slot
+        self.canvas.customSignal.connect(self.textedit.updateText)
+
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MouseTracker()
+    app = QApplication([])
+    window = MainWindow()
     window.show()
-    sys.exit(app.exec())
+    app.exec()
