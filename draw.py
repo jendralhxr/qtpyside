@@ -1,12 +1,12 @@
 import sys
 import math
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QSpinBox, QLabel
 from PySide6.QtGui import QPainter, QPen, QPixmap, QColor
 from PySide6.QtCore import Qt, QPoint, Signal, Slot
 
 APP_WIDTH = 1024
 APP_HEIGHT = 768
-ARC_DISTANCE= 24
+ARC_DISTANCE = 16
 chaincode = ''
 
 PHI = 1.6180339887498948482  # Golden ratio
@@ -142,10 +142,17 @@ class MainWindow(QMainWindow):
         self.canvas = Canvas()
         self.textedit = TextEditChain()
         
+        # Create a SpinBox for ARC_DISTANCE
+        self.spinbox = QSpinBox()
+        self.spinbox.setRange(1, 100)
+        self.spinbox.setValue(ARC_DISTANCE)
+        self.spinbox.valueChanged.connect(self.setArcDistance)
+        
         # Set up the layout
         layout = QVBoxLayout()
         layout.addWidget(self.canvas)
         layout.addWidget(self.textedit)
+        layout.addWidget(self.spinbox)
         
         # Create a central widget and set the layout
         central_widget = QWidget()
@@ -154,6 +161,10 @@ class MainWindow(QMainWindow):
 
         # Connect the canvas's custom signal to the text edit's updateText slot
         self.canvas.customSignal.connect(self.textedit.updateText)
+
+    def setArcDistance(self, value):
+        global ARC_DISTANCE
+        ARC_DISTANCE = value
 
 if __name__ == "__main__":
     app = QApplication([])
