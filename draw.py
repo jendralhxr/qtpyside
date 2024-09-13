@@ -140,7 +140,18 @@ class Canvas(QWidget):
         painter.end()
     
     def drawLetter(self):
-        random_form = chr(random.randint(0xFE70, 0xFEFC))
+        ranges = [
+        #    (0x0600, 0x06FF),  # Basic Arabic
+        #    (0x0700, 0x074F),  # Arabic Supplement
+        #    (0x0750, 0x077F),  # Arabic Extended-A
+        #    (0x08A0, 0x08FF),  # Arabic Extended-B
+        #    (0xFB50, 0xFDFF),  # Arabic Presentation Forms-A
+            (0xFE70, 0xFEFF),  # Arabic Presentation Forms-B
+        #    (0x1EE00, 0x1EEFF) # Arabic Mathematical Alphabetic Symbols
+        ]
+        selected_range = random.choice(ranges)
+        random_form = chr(random.randint(selected_range[0], selected_range[1]))
+        #random_form = chr(random.randint(0xFE70, 0xFEFC))
         painter = QPainter(self.pixmap)
         font = QFont("Arial", 320)  # Choose a font and size that supports Arabic
         painter.setFont(font)
