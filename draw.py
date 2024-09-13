@@ -152,7 +152,7 @@ class Canvas(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Draw Lines with Mouse")
+        self.setWindowTitle("tracing Arabic letters")
         
         # Create the drawing widget and text edit widget
         self.canvas = Canvas()
