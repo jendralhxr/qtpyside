@@ -1,12 +1,13 @@
 import sys
 import math
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QSpinBox, QLabel
-from PySide6.QtGui import QPainter, QPen, QPixmap, QColor
+from PySide6.QtGui import QPainter, QPen, QPixmap, QColor, QFont
 from PySide6.QtCore import Qt, QPoint, Signal, Slot
+import random
 
-APP_WIDTH = 1024
-APP_HEIGHT = 768
-ARC_DISTANCE = 16
+APP_WIDTH = 640
+APP_HEIGHT = 480
+ARC_DISTANCE = 12
 chaincode = ''
 
 PHI = 1.6180339887498948482  # Golden ratio
@@ -105,11 +106,7 @@ class Canvas(QWidget):
                 self.prev_pos_bitmap = current_pos
                 self.update()
 
-    def drawLine(self, start, stop, color):
-        painter = QPainter(self.pixmap)
-        painter.setPen(QPen(color, 6, Qt.SolidLine))
-        painter.drawLine(QPoint(*start), QPoint(*stop))
-        painter.end()
+    
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -126,13 +123,32 @@ class Canvas(QWidget):
             global chaincode
             chaincode = ''
             self.pixmap.fill(QColor(200, 200, 200))
+            self.drawLetter()
             self.update()
             self.emitCustomSignal()
+            
     
     def emitCustomSignal(self):
         global chaincode 
         self.customSignal.emit(chaincode)
 
+    @Slot()
+    def drawLine(self, start, stop, color):
+        painter = QPainter(self.pixmap)
+        painter.setPen(QPen(color, 6, Qt.SolidLine))
+        painter.drawLine(QPoint(*start), QPoint(*stop))
+        painter.end()
+    
+    def drawLetter(self):
+        random_form = chr(random.randint(0xFE80, 0xFEFC))
+        painter = QPainter(self.pixmap)
+        font = QFont("Arial", 320)  # Choose a font and size that supports Arabic
+        painter.setFont(font)
+        painter.setPen(QColor(160, 160, 160))
+        painter.drawText(int(APP_WIDTH*.2), int(APP_HEIGHT*.8), random_form)
+        painter.end()
+        
+        
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
