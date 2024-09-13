@@ -90,12 +90,12 @@ class Canvas(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.prev_pos = event.pos()
+            self.prev_pos = event.position()
             self.prev_pos_bitmap = (self.prev_pos.x(), self.prev_pos.y())
 
     def mouseMoveEvent(self, event):
         if self.prev_pos is not None:
-            current_pos = (event.pos().x(), event.pos().y())
+            current_pos = (event.position().x(), event.position().y())
             if pdistance(current_pos, self.prev_pos_bitmap) > 30:
                 code = freeman(current_pos[0] - self.prev_pos_bitmap[0], self.prev_pos_bitmap[1] - current_pos[1])
                 global chaincode 
@@ -140,7 +140,7 @@ class Canvas(QWidget):
         painter.end()
     
     def drawLetter(self):
-        random_form = chr(random.randint(0xFE80, 0xFEFC))
+        random_form = chr(random.randint(0xFE70, 0xFEFC))
         painter = QPainter(self.pixmap)
         font = QFont("Arial", 320)  # Choose a font and size that supports Arabic
         painter.setFont(font)
