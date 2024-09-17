@@ -12,6 +12,11 @@ chaincode = ''
 
 PHI = 1.6180339887498948482  # Golden ratio
 
+def update_arc(value):
+    global ARC_DISTANCE
+    ARC_DISTANCE = value
+    #print(f"Global variable updated to: {global_variable}")
+
 def freeman(x, y):
     if (y == 0):
         y = 1e-9
@@ -96,7 +101,7 @@ class Canvas(QWidget):
     def mouseMoveEvent(self, event):
         if self.prev_pos is not None:
             current_pos = (event.position().x(), event.position().y())
-            if pdistance(current_pos, self.prev_pos_bitmap) > 30:
+            if pdistance(current_pos, self.prev_pos_bitmap) > ARC_DISTANCE:
                 code = freeman(current_pos[0] - self.prev_pos_bitmap[0], self.prev_pos_bitmap[1] - current_pos[1])
                 global chaincode 
                 chaincode += str(code)
@@ -191,7 +196,9 @@ class MainWindow(QMainWindow):
 
     def setArcDistance(self, value):
         global ARC_DISTANCE
+        print(f"set arc to {ARC_DISTANCE}")
         ARC_DISTANCE = value
+        
 
 if __name__ == "__main__":
     app = QApplication([])
