@@ -16,7 +16,9 @@ PHI = 1.6180339887498948482  # Golden ratio
 df= pd.read_csv(sys.argv[1])
 row_indices = df.index[1:]  # from row 1 to the last row
 column_indices = [1, 4]  # B:isolated, C:initial, D:medial, E:final
-
+random_col=0
+random_row=0
+random_form= 0
 
 def update_arc(value):
     global ARC_DISTANCE
@@ -117,8 +119,6 @@ class Canvas(QWidget):
                 self.prev_pos_bitmap = current_pos
                 self.update()
 
-    
-
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.prev_pos = None
@@ -132,11 +132,13 @@ class Canvas(QWidget):
             QApplication.quit()
         elif event.key() == Qt.Key_C:
             global chaincode
-            chaincode = ''
             self.pixmap.fill(QColor(200, 200, 200))
             self.drawLetter()
             self.update()
             self.emitCustomSignal()
+            global random_row, random_col, random_form
+            print(f"{df.iat[random_row,0]}, pos:{random_col}, code:{chaincode}")
+            chaincode = ''
             
     
     def emitCustomSignal(self):
@@ -163,12 +165,11 @@ class Canvas(QWidget):
         #selected_range = random.choice(ranges)
         #random_form = chr(random.randint(selected_range[0], selected_range[1]))
         #random_form = chr(random.randint(0xFE70, 0xFEFC))
-        global row_indices, column_indices
+        global random_row, random_col, row_indices, random_form
         random_row = random.choice(row_indices)
         random_col = random.randint(1,4) 
-        print(f"{df.iat[random_row,0]}, pos:{random_col}")
+        #print(f"{df.iat[random_row,0]}, pos:{random_col}")
         random_form = chr(int(df.iat[random_row, random_col].replace('U+', ''), 16))
-
         painter = QPainter(self.pixmap)
         font = QFont("Arial", 320)  # Choose a font and size that supports Arabic
         painter.setFont(font)
