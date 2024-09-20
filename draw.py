@@ -1,9 +1,10 @@
 import sys
 import math
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QSpinBox, QLabel
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QSpinBox
 from PySide6.QtGui import QPainter, QPen, QPixmap, QColor, QFont
 from PySide6.QtCore import Qt, QPoint, Signal, Slot
 import random
+import pandas as pd
 
 APP_WIDTH = 640
 APP_HEIGHT = 480
@@ -11,6 +12,11 @@ ARC_DISTANCE = 12
 chaincode = ''
 
 PHI = 1.6180339887498948482  # Golden ratio
+
+df= pd.read_csv(sys.argv[1])
+row_indices = df.index[1:]  # from row 1 to the last row
+column_indices = [1, 4]  # B:isolated, C:initial, D:medial, E:final
+
 
 def update_arc(value):
     global ARC_DISTANCE
@@ -106,7 +112,7 @@ class Canvas(QWidget):
                 global chaincode 
                 chaincode += str(code)
                 self.emitCustomSignal()  # Emit the signal with updated chaincode
-                print(f"from {self.prev_pos_bitmap} to {current_pos}: {chaincode}")
+                #print(f"from {self.prev_pos_bitmap} to {current_pos}: {chaincode}")
                 self.drawLine(self.prev_pos_bitmap, current_pos, self.color_map[code])
                 self.prev_pos_bitmap = current_pos
                 self.update()
@@ -145,18 +151,24 @@ class Canvas(QWidget):
         painter.end()
     
     def drawLetter(self):
-        ranges = [
+        #ranges = [
         #    (0x0600, 0x06FF),  # Basic Arabic
         #    (0x0700, 0x074F),  # Arabic Supplement
         #    (0x0750, 0x077F),  # Arabic Extended-A
         #    (0x08A0, 0x08FF),  # Arabic Extended-B
         #    (0xFB50, 0xFDFF),  # Arabic Presentation Forms-A
-            (0xFE70, 0xFEFF),  # Arabic Presentation Forms-B
+        #    (0xFE70, 0xFEFF),  # Arabic Presentation Forms-B
         #    (0x1EE00, 0x1EEFF) # Arabic Mathematical Alphabetic Symbols
-        ]
-        selected_range = random.choice(ranges)
-        random_form = chr(random.randint(selected_range[0], selected_range[1]))
+        #]
+        #selected_range = random.choice(ranges)
+        #random_form = chr(random.randint(selected_range[0], selected_range[1]))
         #random_form = chr(random.randint(0xFE70, 0xFEFC))
+        global row_indices, column_indices
+        random_row = random.choice(row_indices)
+        random_col = random.randint(1,4) 
+        print(f"{df.iat[random_row,0]}, pos:{random_col}")
+        random_form = chr(int(df.iat[random_row, random_col].replace('U+', ''), 16))
+
         painter = QPainter(self.pixmap)
         font = QFont("Arial", 320)  # Choose a font and size that supports Arabic
         painter.setFont(font)
