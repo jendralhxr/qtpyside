@@ -1,3 +1,4 @@
+# usage: python timer.py /usr/share/orage/sounds/Wall_c.wav /usr/share/orage/sounds/Knock.wav 400
 import sys
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton,
@@ -42,7 +43,7 @@ class TimerApp(QWidget):
 
         self.timer_label = QLabel("00:00")
         self.timer_label.setAlignment(Qt.AlignCenter)
-        self.timer_label.setFont(QFont("Arial", 72))
+        self.timer_label.setFont(QFont("Arial", int(sys.argv[3])))
         layout.addWidget(self.timer_label)
 
         # Timer duration controls
