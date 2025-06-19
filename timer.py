@@ -52,13 +52,13 @@ class TimerApp(QWidget):
         self.spin1 = QSpinBox()
         self.spin1.setRange(1, 3600)
         self.spin1.setValue(5)
-        control_layout.addWidget(QLabel("Timer 1 (s):"))
+        control_layout.addWidget(QLabel("Timer Pemaparan (s):"))
         control_layout.addWidget(self.spin1)
 
         self.spin2 = QSpinBox()
         self.spin2.setRange(1, 3600)
         self.spin2.setValue(3)
-        control_layout.addWidget(QLabel("Timer 2 (s):"))
+        control_layout.addWidget(QLabel("Timer Tanya Jawab (s):"))
         control_layout.addWidget(self.spin2)
 
         layout.addLayout(control_layout)
