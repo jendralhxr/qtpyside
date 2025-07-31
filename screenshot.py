@@ -123,11 +123,18 @@ class ScreenGrabber(QWidget):
             print("Action canceled.")
 
     def copy_to_clipboard(self, pil_image):
-        rgb_image = pil_image.convert("RGB")
-        data = rgb_image.tobytes("raw", "RGB")
-        qimage = QImage(data, rgb_image.width, rgb_image.height, QImage.Format_RGB888)
+        # Convert PIL to NumPy array (RGB)
+        np_img = np.array(pil_image.convert("RGB"))
+
+        # Create QImage safely with stride
+        height, width, channels = np_img.shape
+        bytes_per_line = channels * width
+        qimage = QImage(np_img.data, width, height, bytes_per_line, QImage.Format_RGB888).copy()
+
+        # Copy to clipboard
         QApplication.clipboard().setImage(qimage)
         QMessageBox.information(self, "Clipboard", "Image copied to clipboard.")
+
 
     def save_image(self, pil_image):
         path, _ = QFileDialog.getSaveFileName(self, "Save Screenshot", "screenshot.png", "PNG Files (*.png)")
