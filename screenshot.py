@@ -12,33 +12,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QFileDialog, QMessageBox,
     QVBoxLayout, QHBoxLayout, QPushButton, QColorDialog,
-    QSpinBox, QTextEdit, QDialog
+    QSpinBox, QTextEdit
 )
-
-
-
-class ActionDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Choose an Action")
-        layout = QVBoxLayout()
-
-        self.copy_btn = QPushButton("📋 Copy to Clipboard")
-        self.save_btn = QPushButton("💾 Save as PNG")
-        self.qr_btn = QPushButton("📷 Detect QR/Barcode")
-        self.cancel_btn = QPushButton("❌ Cancel")
-
-        self.copy_btn.clicked.connect(lambda: self.done(1))
-        self.save_btn.clicked.connect(lambda: self.done(2))
-        self.qr_btn.clicked.connect(lambda: self.done(3))
-        self.cancel_btn.clicked.connect(lambda: self.done(0))
-
-        layout.addWidget(self.copy_btn)
-        layout.addWidget(self.save_btn)
-        layout.addWidget(self.qr_btn)
-        layout.addWidget(self.cancel_btn)
-
-        self.setLayout(layout)
 
 
 class ScreenGrabber(QWidget):
@@ -104,28 +79,7 @@ class ScreenGrabber(QWidget):
             # print("Selection cancelled by Esc key.")
             QApplication.quit()
 
-    # def handle_selection(self):
-    #     rect = QRect(self.start, self.end).normalized()
-    #     left = rect.left() + self.capture_offset_x
-    #     top = rect.top() + self.capture_offset_y
-    #     right = rect.right() + self.capture_offset_x
-    #     bottom = rect.bottom() + self.capture_offset_y
-
-    #     cropped = self.full_image_pil.crop((left, top, right, bottom))
-
-    #     dialog = ActionDialog()
-    #     result = dialog.exec()
-
-    #     if result == 1:
-    #         self.copy_to_clipboard(cropped)
-    #     elif result == 2:
-    #         self.save_image(cropped)
-    #     elif result == 3:
-    #         self.detect_qr_code(cropped)
-    #     else:
-    #         print("Action canceled.")
-    
-    # annotated editor
+    # annotated editor invoked
     def handle_selection(self):
         rect = QRect(self.start, self.end).normalized()
         left = rect.left() + self.capture_offset_x
@@ -138,55 +92,7 @@ class ScreenGrabber(QWidget):
         self.editor = AnnotationEditor(cropped)
         self.editor.show()
 
-    def copy_to_clipboard(self, pil_image):
-        # Convert PIL to NumPy array (RGB)
-        np_img = np.array(pil_image.convert("RGB"))
-
-        # Create QImage safely with stride
-        height, width, channels = np_img.shape
-        bytes_per_line = channels * width
-        qimage = QImage(np_img.data, width, height, bytes_per_line, QImage.Format_RGB888).copy()
-
-        # Copy to clipboard
-        QApplication.clipboard().setImage(qimage)
-        QMessageBox.information(self, "Clipboard", "Image copied to clipboard.")
-
-
-    def save_image(self, pil_image):
-        path, _ = QFileDialog.getSaveFileName(self, "Save Screenshot", "screenshot.png", "PNG Files (*.png)")
-        if path:
-            pil_image.save(path)
-            QMessageBox.information(self, "Saved", f"Image saved to: {path}")
-
-    def detect_qr_code(self, pil_image):
-        np_img = np.array(pil_image.convert("RGB"))
-        gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
-        barcodes = decode(gray)
-
-        if barcodes:
-            texts = [obj.data.decode("utf-8") for obj in barcodes]
-            result = "\n".join(texts)
-            self.show_detected_text(result)
-        else:
-            QMessageBox.information(self, "QR/Barcode", "No QR or barcode detected.")
-
-    def show_detected_text(self, text):
-        window = QWidget()
-        window.setWindowTitle("QR/Barcode Result")
-        layout = QVBoxLayout()
-
-        text_edit = QTextEdit()
-        text_edit.setReadOnly(True)
-        text_edit.setPlainText(text)
-        layout.addWidget(text_edit)
-
-        window.setLayout(layout)
-        window.resize(500, 200)
-        window.show()
-        self.detected_text_window = window  # keep window alive
-
-
-
+ 
 class AnnotationEditor(QWidget):
     def __init__(self, pil_image):
         super().__init__()
@@ -303,12 +209,12 @@ class AnnotationEditor(QWidget):
             QMessageBox.information(self, "Saved", f"Image saved to: {path}")
 
     def detect_qr_code(self):
-        qimage = self.canvas.toImage().convertToFormat(QImage.Format_RGB888)
+        qimage = self.canvas.toImage().convertToFormat(QImage.Format_Grayscale8)
         ptr = qimage.bits()
-        ptr.setsize(qimage.sizeInBytes())
-        arr = np.array(ptr).reshape((qimage.height(), qimage.width(), 3))
-        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-        barcodes = decode(gray)
+        arr = np.array(ptr).reshape((qimage.height(), qimage.bytesPerLine()))
+        # Slice to image width to remove padded bytes
+        arr = arr[:, :qimage.width()]
+        barcodes = decode(arr)
 
         if barcodes:
             texts = [obj.data.decode("utf-8") for obj in barcodes]
