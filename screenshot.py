@@ -1,26 +1,20 @@
 import sys
+import mss
+import numpy as np
+import cv2
+from PIL import Image
+from pyzbar.pyzbar import decode
+
+from PySide6.QtCore import Qt, QRect, QPoint
+from PySide6.QtGui import (
+    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent
+)
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QFileDialog, QMessageBox,
-    QVBoxLayout, QPushButton, QDialog, QTextEdit
+    QVBoxLayout, QHBoxLayout, QPushButton, QColorDialog,
+    QSpinBox, QTextEdit, QDialog
 )
-from PySide6.QtGui import (
-    QPainter, QColor, QPen, QGuiApplication, QPixmap, QImage, QClipboard, QCursor
-)
-from PySide6.QtCore import Qt, QRect, QPoint
-import mss
-from PIL import Image
-import cv2
-import numpy as np
-from pyzbar.pyzbar import decode
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton, QColorDialog,
-    QHBoxLayout, QSpinBox, QFileDialog, QMessageBox, QTextEdit
-)
-from PySide6.QtGui import QPainter, QPen, QColor, QPixmap, QMouseEvent, QImage
-from PySide6.QtCore import Qt, QPoint
-import numpy as np
-from pyzbar.pyzbar import decode
-import cv2
+
 
 
 class ActionDialog(QDialog):
@@ -197,6 +191,7 @@ class AnnotationEditor(QWidget):
     def __init__(self, pil_image):
         super().__init__()
         self.setWindowTitle("Annotate Screenshot")
+        self.setCursor(Qt.CrossCursor)
 
         # Convert PIL image to QPixmap
         self.pil_image = pil_image.convert("RGBA")
@@ -272,16 +267,16 @@ class AnnotationEditor(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
             self.drawing = True
-            self.last_point = event.position().toPoint()
-
+        if event.button() == Qt.RightButton:
+            self.clear_canvas()
+            
     def mouseMoveEvent(self, event: QMouseEvent):
         if self.drawing:
             painter = QPainter(self.canvas)
             pen = QPen(self.pen_color, self.pen_width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen)
-            current_point = event.position().toPoint()
-            painter.drawLine(self.last_point, current_point)
-            self.last_point = current_point
+            current_point = event.position().toPoint() + QPoint(-8, -8)
+            painter.drawPoint(current_point)
             self.label.setPixmap(self.canvas)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
