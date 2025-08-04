@@ -236,6 +236,9 @@ class AnnotationEditor(QWidget):
         dialog.show()
         self.result_window = dialog  # keep alive
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            QApplication.quit()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
