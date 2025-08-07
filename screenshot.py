@@ -37,7 +37,7 @@ class ScreenGrabber(QWidget):
 
     def take_background_screenshot(self):
         with mss.mss() as sct:
-            monitor = sct.monitors[1]  # Primary screen
+            monitor = sct.monitors[0]  # Primary screen
             img = sct.grab(monitor)
 
             # Store PIL image for cropping
