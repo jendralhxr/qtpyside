@@ -1,39 +1,3 @@
-import importlib
-import subprocess
-import sys
-import threading
-
-REQUIRED = {
-    "pytesseract": "pytesseract",
-    "cv2": "opencv-python"
-}
-
-def _install(pkg):
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--quiet", pkg]
-    )
-
-def ensure_deps():
-    missing = []
-
-    for module, pipname in REQUIRED.items():
-        try:
-            importlib.import_module(module)
-        except ImportError:
-            missing.append(pipname)
-
-    if not missing:
-        return  # fast path ⚡ nothing to do
-
-    def worker():
-        for pkg in missing:
-            _install(pkg)
-
-    threading.Thread(target=worker, daemon=True).start()
-
-ensure_deps()
-
-
 import sys
 import mss
 import numpy as np
