@@ -1,3 +1,39 @@
+import importlib
+import subprocess
+import sys
+import threading
+
+REQUIRED = {
+    "pytesseract": "pytesseract",
+    "cv2": "opencv-python"
+}
+
+def _install(pkg):
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "--quiet", pkg]
+    )
+
+def ensure_deps():
+    missing = []
+
+    for module, pipname in REQUIRED.items():
+        try:
+            importlib.import_module(module)
+        except ImportError:
+            missing.append(pipname)
+
+    if not missing:
+        return  # fast path ⚡ nothing to do
+
+    def worker():
+        for pkg in missing:
+            _install(pkg)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+ensure_deps()
+
+
 import sys
 import mss
 import numpy as np
@@ -8,14 +44,13 @@ import pytesseract
 
 from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import (
-    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent
+    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent, QKeySequence, QShortcut
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QFileDialog, QMessageBox,
     QVBoxLayout, QHBoxLayout, QPushButton, QColorDialog,
     QSpinBox, QTextEdit
 )
-
 
 class ScreenGrabber(QWidget):
     def __init__(self):
@@ -244,9 +279,8 @@ class AnnotationEditor(QWidget):
         else:
             QMessageBox.information(self, "OCR", "No text detected.")
 
-
     def show_detected_text(self, text):
-        dialog = QWidget()
+        dialog = QWidget(self)
         dialog.setWindowTitle("QR/Barcode Result")
         layout = QVBoxLayout()
         text_edit = QTextEdit()
@@ -257,6 +291,7 @@ class AnnotationEditor(QWidget):
         dialog.resize(500, 200)
         dialog.show()
         self.result_window = dialog  # keep alive
+        QShortcut(QKeySequence(Qt.Key_Escape), dialog, activated=dialog.close)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
