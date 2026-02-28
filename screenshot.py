@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from pyzbar.pyzbar import decode
+import pytesseract
 
 from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import (
@@ -106,7 +107,7 @@ class AnnotationEditor(QWidget):
         self.temp_canvas = QPixmap(self.canvas.size())
         self.base_canvas = self.canvas.copy()
 
-        # Drawing settings
+        # Drawing settingsdetect_qr_code
         self.drawing = False
         self.last_point = QPoint()
         self.pen_color = QColor("yellow")
@@ -152,6 +153,10 @@ class AnnotationEditor(QWidget):
         self.qr_btn = QPushButton("📷 Detect QR")
         self.qr_btn.clicked.connect(self.detect_qr_code)
         tool_layout.addWidget(self.qr_btn)
+
+        self.ocr_btn = QPushButton("🔤 OCR Text")
+        self.ocr_btn.clicked.connect(self.detect_text)
+        tool_layout.addWidget(self.ocr_btn)
 
         self.cancel_btn = QPushButton("❌ Cancel")
         self.cancel_btn.clicked.connect(self.close)
@@ -222,6 +227,23 @@ class AnnotationEditor(QWidget):
             self.show_detected_text(result)
         else:
             QMessageBox.information(self, "QR/Barcode", "No QR or barcode detected.")
+
+    def detect_text(self):
+        qimage = self.canvas.toImage().convertToFormat(QImage.Format_Grayscale8)
+        ptr = qimage.bits()
+        arr = np.array(ptr).reshape((qimage.height(), qimage.bytesPerLine()))
+        # Slice to image width to remove padded bytes
+        arr = arr[:, :qimage.width()]
+        
+        th = cv2.threshold(arr, 0, 255, cv2.THRESH_OTSU)[1]
+        textocr = pytesseract.image_to_string(th, config="--psm 6")
+        print(textocr)
+
+        if textocr:
+            self.show_detected_text(textocr)
+        else:
+            QMessageBox.information(self, "OCR", "No text detected.")
+
 
     def show_detected_text(self, text):
         dialog = QWidget()
