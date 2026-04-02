@@ -120,11 +120,6 @@ class AnnotationEditor(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        # Drawing area
-        self.label = QLabel()
-        self.label.setPixmap(self.canvas)
-        layout.addWidget(self.label)
-
         # Tools
         tool_layout = QHBoxLayout()
         self.color_btn = QPushButton("🎨 Color")
@@ -137,23 +132,23 @@ class AnnotationEditor(QWidget):
         self.width_spin.valueChanged.connect(self.change_pen_width)
         tool_layout.addWidget(self.width_spin)
 
-        self.clear_btn = QPushButton("🧼 Clear")
+        self.clear_btn = QPushButton("🧼 Cl&ear")
         self.clear_btn.clicked.connect(self.clear_canvas)
         tool_layout.addWidget(self.clear_btn)
 
-        self.copy_btn = QPushButton("📋 Copy")
+        self.copy_btn = QPushButton("📋 &Copy")
         self.copy_btn.clicked.connect(self.copy_to_clipboard)
         tool_layout.addWidget(self.copy_btn)
 
-        self.save_btn = QPushButton("💾 Save")
+        self.save_btn = QPushButton("💾 &Save")
         self.save_btn.clicked.connect(self.save_image)
         tool_layout.addWidget(self.save_btn)
 
-        self.qr_btn = QPushButton("📷 Detect QR")
+        self.qr_btn = QPushButton("📷 Detect &QR")
         self.qr_btn.clicked.connect(self.detect_qr_code)
         tool_layout.addWidget(self.qr_btn)
 
-        self.ocr_btn = QPushButton("🔤 OCR Text")
+        self.ocr_btn = QPushButton("🔤 OCR &Text")
         self.ocr_btn.clicked.connect(self.detect_text)
         tool_layout.addWidget(self.ocr_btn)
 
@@ -162,7 +157,12 @@ class AnnotationEditor(QWidget):
         tool_layout.addWidget(self.cancel_btn)
 
         layout.addLayout(tool_layout)
-        self.resize(self.canvas.width(), self.canvas.height() + 40)
+        #self.resize(self.canvas.width(), self.canvas.height() + 40)
+
+        # Drawing area
+        self.label = QLabel()
+        self.label.setPixmap(self.canvas)
+        layout.addWidget(self.label)
 
     def pil_to_qimage(self, image):
         data = image.tobytes("raw", "RGBA")
@@ -185,7 +185,7 @@ class AnnotationEditor(QWidget):
             painter = QPainter(self.canvas)
             pen = QPen(self.pen_color, self.pen_width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen)
-            current_point = event.position().toPoint() + QPoint(-8, -8)
+            current_point = event.position().toPoint() + QPoint(-8, -48)
             painter.drawPoint(current_point)
             self.label.setPixmap(self.canvas)
 
@@ -258,8 +258,18 @@ class AnnotationEditor(QWidget):
         QShortcut(QKeySequence(Qt.Key_Escape), dialog, activated=dialog.close)
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            QApplication.quit()
+        actions = {
+        Qt.Key_C: self.copy_to_clipboard,
+        Qt.Key_S: self.save_image,
+        Qt.Key_Q: self.detect_qr_code,
+        Qt.Key_T: self.detect_text,
+        Qt.Key_E: self.clear_canvas,
+        Qt.Key_Escape: QApplication.quit,
+            }
+    
+        action = actions.get(event.key())
+        if action:
+            action()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
