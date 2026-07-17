@@ -96,7 +96,7 @@ class TimestampTextEdit(QTextEdit):
             return
 
         # 4. Handle 'Space' key logic (Speak last typed word)
-        if key == Qt.Key_Space:
+        if key == Qt.Key_Space or key == Qt.Key_Return:
             super().keyPressEvent(event)
             self.speak_last_word()
             return
