@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QWidget,
 )
-
+from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QShortcut
 
 class TimestampTextEdit(QTextEdit):
     def __init__(self, parent=None):
@@ -25,7 +26,7 @@ class TimestampTextEdit(QTextEdit):
         self.narrator_enabled = True
 
         # Initialize the lightweight offline TTS engine
-        self.tts_engine = pyttsx3.init()
+        self.tts_engine = pyttsx3.init(driverName="espeak")
         self.tts_engine.setProperty("rate", 175)
         
         # Set language to Indonesian if available on the system
@@ -74,12 +75,11 @@ class TimestampTextEdit(QTextEdit):
         key = event.key()
         text = event.text()
 
-        # 1. Record the timestamp of EVERY keystroke universally
         self.keystroke_log.append(
             {"key": event.text() or f"KeyC_{key}", "time": current_time}
         )
 
-        # 2. Handle 'Tab' key logic
+        # tab is the 'lap' timer
         if key == Qt.Key_Tab:
             last_ts_str = (
                 self.last_alphanumeric_timestamp
@@ -90,12 +90,17 @@ class TimestampTextEdit(QTextEdit):
             self.waiting_for_next_after_tab = True
             return
 
-        # 3. Handle 'Backspace' key logic
+        # 3. 'Backspace' dont delete, it just prints delay mark
         if key == Qt.Key_Backspace:
             self.insertPlainText("-")
             return
 
-        # 4. Handle 'Space' key logic (Speak last typed word)
+        # tilde/backquote resets the buffer
+        if key == Qt.Key_QuoteLeft:
+            self.setText("");
+            return
+
+        # space, return or key speak the last word
         if key == Qt.Key_Space or key == Qt.Key_Return:
             super().keyPressEvent(event)
             self.speak_last_word()
@@ -118,6 +123,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Lantunkan Kibor")
         #self.resize(600, 450)
+        self.save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
 
         # Main Layout
         layout = QVBoxLayout()
@@ -138,7 +144,8 @@ class MainWindow(QMainWindow):
         self.save_button = QPushButton("Save File")
         self.save_button.clicked.connect(self.save_file)
         button_layout.addWidget(self.save_button)
-
+        self.save_shortcut.activated.connect(self.save_file)
+        
         # Add button layout to main window layout
         layout.addLayout(button_layout)
 
