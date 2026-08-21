@@ -8,7 +8,7 @@ import pytesseract
 
 from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import (
-    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent, QKeySequence, QShortcut
+    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent, QKeySequence, QShortcut, QCursor
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QFileDialog, QMessageBox,
@@ -30,20 +30,38 @@ class ScreenGrabber(QWidget):
 
         # Overlay setup
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        self.setWindowState(Qt.WindowFullScreen)
+        # Position the overlay on the monitor that was captured (the one
+        # containing the mouse cursor), then go fullscreen on that screen.
+        self.setGeometry(self.monitor_rect)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.CrossCursor)
-        self.show()
+        self.showFullScreen()
+
+    def get_monitor_under_cursor(self, sct):
+        """Return the mss monitor dict for the screen currently under the mouse cursor."""
+        cursor_pos = QCursor.pos()
+        x, y = cursor_pos.x(), cursor_pos.y()
+
+        # sct.monitors[0] is the combined virtual screen; individual
+        # monitors start at index 1.
+        for m in sct.monitors[1:]:
+            if (m["left"] <= x < m["left"] + m["width"]
+                    and m["top"] <= y < m["top"] + m["height"]):
+                return m
+
+        # Fallback: primary monitor if cursor position couldn't be matched.
+        return sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
 
     def take_background_screenshot(self):
         with mss.mss() as sct:
-            monitor = sct.monitors[0]  # Primary screen
+            monitor = self.get_monitor_under_cursor(sct)
             img = sct.grab(monitor)
 
             # Store PIL image for cropping
             self.full_image_pil = Image.frombytes("RGB", img.size, img.rgb)
             self.capture_offset_x = monitor["left"]
             self.capture_offset_y = monitor["top"]
+            self.monitor_rect = QRect(monitor["left"], monitor["top"], monitor["width"], monitor["height"])
 
             # For drawing in background
             qimage = QImage(img.rgb, img.width, img.height, QImage.Format_RGB888)
