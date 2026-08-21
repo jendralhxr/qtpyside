@@ -244,8 +244,8 @@ class AnnotationEditor(QWidget):
         arr = np.array(ptr).reshape((qimage.height(), qimage.bytesPerLine()))
         # Slice to image width to remove padded bytes
         arr = arr[:, :qimage.width()]
-        
-        th = cv2.threshold(arr, 0, 255, cv2.THRESH_OTSU)[1]
+        threshold = arr.mean()
+        th = np.where(arr > threshold, 255, 0).astype(np.uint8)
         textocr = pytesseract.image_to_string(th, config="--psm 6")
         print(textocr)
 
