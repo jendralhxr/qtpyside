@@ -1,14 +1,13 @@
 import sys
-import mss
 import numpy as np
 import cv2
-from PIL import Image
 from pyzbar.pyzbar import decode
 import pytesseract
 
 from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import (
-    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent, QKeySequence, QShortcut, QCursor
+    QPainter, QColor, QPen, QPixmap, QImage, QMouseEvent, QKeySequence,
+    QShortcut, QCursor, QGuiApplication
 )
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QFileDialog, QMessageBox,
@@ -21,55 +20,52 @@ class ScreenGrabber(QWidget):
         super().__init__()
         self.start = QPoint()
         self.end = QPoint()
-        self.capture_offset_x = 0
-        self.capture_offset_y = 0
-        self.full_image_pil = None
         self.background = None
+        # Ratio between the grabbed pixmap's pixel size and the widget's
+        # logical size on this screen. Normally 1:1 since both come from
+        # the same QScreen, but kept as a safety net in case a platform
+        # ever returns a differently-scaled grab.
+        self.scale_x = 1.0
+        self.scale_y = 1.0
 
         self.take_background_screenshot()
 
         # Overlay setup
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        # Position the overlay on the monitor that was captured (the one
-        # containing the mouse cursor), then go fullscreen on that screen.
-        self.setGeometry(self.monitor_rect)
+        # Position the overlay using Qt's own geometry for the screen under
+        # the cursor, so it lines up exactly with the grabbed content and
+        # with the mouse coordinates Qt reports for that screen.
+        self.setGeometry(self.screen_geometry)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.CrossCursor)
         self.showFullScreen()
 
-    def get_monitor_under_cursor(self, sct):
-        """Return the mss monitor dict for the screen currently under the mouse cursor."""
+    def get_screen_under_cursor(self):
+        """Return the QScreen that currently contains the mouse cursor."""
         cursor_pos = QCursor.pos()
-        x, y = cursor_pos.x(), cursor_pos.y()
-
-        # sct.monitors[0] is the combined virtual screen; individual
-        # monitors start at index 1.
-        for m in sct.monitors[1:]:
-            if (m["left"] <= x < m["left"] + m["width"]
-                    and m["top"] <= y < m["top"] + m["height"]):
-                return m
-
-        # Fallback: primary monitor if cursor position couldn't be matched.
-        return sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+        screen = QGuiApplication.screenAt(cursor_pos)
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        return screen
 
     def take_background_screenshot(self):
-        with mss.mss() as sct:
-            monitor = self.get_monitor_under_cursor(sct)
-            img = sct.grab(monitor)
+        screen = self.get_screen_under_cursor()
+        self.screen_geometry = screen.geometry()
 
-            # Store PIL image for cropping
-            self.full_image_pil = Image.frombytes("RGB", img.size, img.rgb)
-            self.capture_offset_x = monitor["left"]
-            self.capture_offset_y = monitor["top"]
-            self.monitor_rect = QRect(monitor["left"], monitor["top"], monitor["width"], monitor["height"])
+        # grabWindow(0) on a specific QScreen captures just that screen,
+        # in that screen's own local coordinates (its top-left is (0, 0)).
+        # No manual monitor offset/matching needed, unlike mss.
+        self.background = screen.grabWindow(0)
 
-            # For drawing in background
-            qimage = QImage(img.rgb, img.width, img.height, QImage.Format_RGB888)
-            self.background = QPixmap.fromImage(qimage)
+        # Guard against the (unusual) case where the grabbed pixmap's pixel
+        # size doesn't match the screen's logical size 1:1.
+        if self.screen_geometry.width() and self.screen_geometry.height():
+            self.scale_x = self.background.width() / self.screen_geometry.width()
+            self.scale_y = self.background.height() / self.screen_geometry.height()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.drawPixmap(0, 0, self.background)
+        painter.drawPixmap(self.rect(), self.background, self.background.rect())
         painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
 
         if not self.start.isNull() and not self.end.isNull():
@@ -100,27 +96,28 @@ class ScreenGrabber(QWidget):
     # annotated editor invoked
     def handle_selection(self):
         rect = QRect(self.start, self.end).normalized()
-        left = rect.left() + self.capture_offset_x
-        top = rect.top() + self.capture_offset_y
-        right = rect.right() + self.capture_offset_x
-        bottom = rect.bottom() + self.capture_offset_y
-    
-        cropped = self.full_image_pil.crop((left, top, right, bottom))
-    
+        # self.start/self.end are in the widget's local (logical) pixel
+        # space, which is also the background pixmap's coordinate space
+        # since both come from the same QScreen. scale_x/scale_y are 1.0
+        # in the normal case.
+        left = round(rect.left() * self.scale_x)
+        top = round(rect.top() * self.scale_y)
+        right = round(rect.right() * self.scale_x)
+        bottom = round(rect.bottom() * self.scale_y)
+
+        cropped = self.background.copy(QRect(QPoint(left, top), QPoint(right, bottom)))
+
         self.editor = AnnotationEditor(cropped)
         self.editor.show()
 
  
 class AnnotationEditor(QWidget):
-    def __init__(self, pil_image):
+    def __init__(self, pixmap):
         super().__init__()
         self.setWindowTitle("Annotate Screenshot")
         self.setCursor(Qt.CrossCursor)
 
-        # Convert PIL image to QPixmap
-        self.pil_image = pil_image.convert("RGBA")
-        self.qimage = self.pil_to_qimage(self.pil_image)
-        self.canvas = QPixmap.fromImage(self.qimage)
+        self.canvas = QPixmap(pixmap)
         self.temp_canvas = QPixmap(self.canvas.size())
         self.base_canvas = self.canvas.copy()
 
@@ -181,11 +178,6 @@ class AnnotationEditor(QWidget):
         self.label = QLabel()
         self.label.setPixmap(self.canvas)
         layout.addWidget(self.label)
-
-    def pil_to_qimage(self, image):
-        data = image.tobytes("raw", "RGBA")
-        qimage = QImage(data, image.width, image.height, QImage.Format_RGBA8888)
-        return qimage
 
     def clear_canvas(self):
         self.canvas = self.base_canvas.copy()
