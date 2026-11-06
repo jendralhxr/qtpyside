@@ -244,12 +244,23 @@ class AnnotationEditor(QWidget):
         arr = np.array(ptr).reshape((qimage.height(), qimage.bytesPerLine()))
         # Slice to image width to remove padded bytes
         arr = arr[:, :qimage.width()]
+        
         threshold = arr.mean()
         th = np.where(arr > threshold, 255, 0).astype(np.uint8)
-        textocr = pytesseract.image_to_string(th, config="--psm 6")
+        
+        # Create the inverted (negative) image
+        th_inverted = cv2.bitwise_not(th)  # Or: 255 - th
+        
+        # Run OCR on both images
+        config = "--psm 6"
+        text_normal = pytesseract.image_to_string(th, config=config)
+        text_inverted = pytesseract.image_to_string(th_inverted, config=config)
+        
+        # Select whichever returned the longest text (ignoring leading/trailing whitespace)
+        textocr = text_normal if len(text_normal.strip()) >= len(text_inverted.strip()) else text_inverted
         print(textocr)
-
-        if textocr:
+    
+        if textocr.strip():
             self.show_detected_text(textocr)
         else:
             QMessageBox.information(self, "OCR", "No text detected.")
