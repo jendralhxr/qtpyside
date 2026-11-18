@@ -190,7 +190,7 @@ class AudioAnalyzerApp(QMainWindow):
         self.spec_img = pg.ImageItem(axisOrder="col-major")
         self.spec_plot.addItem(self.spec_img)
 
-        colormap = pg.colormap.get("inferno")
+        colormap = pg.colormap.get("magma", source="matplotlib")
         self.spec_img.setLookupTable(colormap.getLookupTable())
         self.spec_img.setLevels([-80.0, -15.0])
 
