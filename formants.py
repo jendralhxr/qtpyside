@@ -4,7 +4,7 @@ import sys
 import numpy as np
 import pyqtgraph as pg
 from scipy.signal import lfilter, windows
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -103,8 +103,6 @@ class AudioAnalyzerApp(QMainWindow):
         self.waveform_sec = 1.0       # 1.0 s rolling waveform
         self.max_display_freq = 4000  # 0–4 kHz range
 
-        # 1024-sample window (~23.2 ms) zero-padded to 2048 FFT points
-        # -> 21.5 Hz/bin (187 bins across 0-4 kHz) & 256-sample hop (~5.8 ms/slice)
         self.nperseg = 1024
         self.nfft = 2048
         self.hop_size = 256
@@ -114,7 +112,7 @@ class AudioAnalyzerApp(QMainWindow):
         self.num_spec_slices = int(np.ceil((self.spec_window_sec * self.sample_rate) / self.hop_size))
         self.wave_buffer_len = int(self.waveform_sec * self.sample_rate)
 
-        # Rolling buffers
+        # Rolling buffers (shape: [time_slices, freq_bins] for col-major ImageItem)
         self.wave_buffer = np.zeros(self.wave_buffer_len, dtype=np.float32)
         self.spec_buffer = np.full((self.num_spec_slices, self.max_bin), -80.0, dtype=np.float32)
         self.stft_remainder = np.array([], dtype=np.float32)
@@ -129,7 +127,7 @@ class AudioAnalyzerApp(QMainWindow):
         self._init_ui()
         self.refresh_microphones()
 
-        # 25 FPS (40 ms) UI & DSP refresh for smooth, low-CPU operation
+        # 25 FPS (40 ms) UI & DSP refresh
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_plots_and_metrics)
         self.timer.start(40)
@@ -166,10 +164,10 @@ class AudioAnalyzerApp(QMainWindow):
         top_bar.addStretch()
         main_layout.addLayout(top_bar)
 
-        # --- PyQtGraph Plots (antialias=False for fast software rendering) ---
-        pg.setConfigOptions(antialias=False)
+        # --- PyQtGraph Plots ---
+        pg.setConfigOptions(antialias=False, imageAxisOrder="col-major")
 
-        # 1. Live Waveform Plot (1.0 s window, peak-downsampled for speed)
+        # 1. Live Waveform Plot (1.0 s window)
         self.wave_plot = pg.PlotWidget(title="Live Waveform (44.1 kHz, 1.0 s window)")
         self.wave_plot.setLabel("left", "Amplitude")
         self.wave_plot.setLabel("bottom", "Time", units="s")
@@ -189,7 +187,7 @@ class AudioAnalyzerApp(QMainWindow):
         self.spec_plot = pg.PlotWidget(title="Live Spectrogram (1.0 s window, 0–4 kHz, Pre-emphasized)")
         self.spec_plot.setLabel("left", "Frequency", units="Hz")
         self.spec_plot.setLabel("bottom", "Time", units="s")
-        self.spec_img = pg.ImageItem()
+        self.spec_img = pg.ImageItem(axisOrder="col-major")
         self.spec_plot.addItem(self.spec_img)
 
         colormap = pg.colormap.get("inferno")
@@ -198,12 +196,13 @@ class AudioAnalyzerApp(QMainWindow):
 
         dt = self.hop_size / self.sample_rate
         total_width = self.num_spec_slices * dt
-        self.spec_img.setRect(
+        self.spec_rect = QRectF(
             -total_width,
             -0.5 * self.freq_per_bin,
             total_width,
             self.max_bin * self.freq_per_bin,
         )
+        self.spec_img.setRect(self.spec_rect)
         self.spec_plot.setXRange(-self.spec_window_sec, 0, padding=0)
         self.spec_plot.setYRange(0, self.max_display_freq, padding=0)
 
@@ -349,11 +348,17 @@ class AudioAnalyzerApp(QMainWindow):
             self.stft_remainder = combined
 
     def update_plots_and_metrics(self):
+        # 1. Refresh Waveform
         self.wave_curve.setData(self.time_axis, self.wave_buffer)
-        self.spec_img.setImage(self.spec_buffer, autoLevels=False)
 
+        # 2. Refresh Spectrogram (enforce col-major orientation, dB bounds, and world rect)
+        spec_snapshot = self.spec_buffer.copy()
+        self.spec_img.setImage(spec_snapshot, autoLevels=False, levels=(-80.0, -15.0))
+        self.spec_img.setRect(self.spec_rect)
+
+        # 3. Analyze the latest 50 ms frame for F0, F1, F2
         analysis_len = int(0.05 * self.sample_rate)
-        frame = self.wave_buffer[-analysis_len:]
+        frame = self.wave_buffer[-analysis_len:].copy()
 
         rms = np.sqrt(np.mean(frame**2))
         if rms < 0.008:
