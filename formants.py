@@ -40,7 +40,7 @@ class AudioReaderThread(QThread):
                 "--format=float32le",
                 f"--rate={self.sample_rate}",
                 "--channels=1",
-                "--latency-msec=20",
+                "--latency-msec=25",
                 "-d",
                 self.device_id,
             ]
@@ -97,24 +97,31 @@ class AudioAnalyzerApp(QMainWindow):
         self.setWindowTitle("Real-Time Audio Waveform, Spectrogram & Formant Analyzer")
         self.resize(1280, 800)
 
-        # --- Audio & DSP Parameters ---
+        # --- Audio & Optimized Spectrogram Parameters ---
         self.sample_rate = 44100
-        self.spec_window_sec = 2.0    # 2.0 s spectrogram window
-        self.waveform_sec = 2.0       # 2.0 s waveform window
-        self.nperseg = 512
-        self.noverlap = 384
-        self.hop_size = self.nperseg - self.noverlap  # 128 samples (~2.9 ms/slice)
-        self.max_display_freq = 4000  # 0–4 kHz spectrogram cap
+        self.spec_window_sec = 1.0    # 1.0 s rolling spectrogram
+        self.waveform_sec = 1.0       # 1.0 s rolling waveform
+        self.max_display_freq = 4000  # 0–4 kHz range
 
-        self.num_spec_slices = int((self.spec_window_sec * self.sample_rate) / self.hop_size)
-        self.max_bin = int(self.max_display_freq / (self.sample_rate / self.nperseg))
+        # 1024-sample window (~23.2 ms) zero-padded to 2048 FFT points
+        # -> 21.5 Hz/bin (187 bins across 0-4 kHz) & 256-sample hop (~5.8 ms/slice)
+        self.nperseg = 1024
+        self.nfft = 2048
+        self.hop_size = 256
+
+        self.freq_per_bin = self.sample_rate / self.nfft
+        self.max_bin = int(np.ceil(self.max_display_freq / self.freq_per_bin)) + 1
+        self.num_spec_slices = int(np.ceil((self.spec_window_sec * self.sample_rate) / self.hop_size))
         self.wave_buffer_len = int(self.waveform_sec * self.sample_rate)
 
         # Rolling buffers
         self.wave_buffer = np.zeros(self.wave_buffer_len, dtype=np.float32)
-        self.spec_buffer = np.full((self.num_spec_slices, self.max_bin), -100.0, dtype=np.float32)
+        self.spec_buffer = np.full((self.num_spec_slices, self.max_bin), -80.0, dtype=np.float32)
         self.stft_remainder = np.array([], dtype=np.float32)
+        self.prev_sample = 0.0
+
         self.hann_win = windows.hann(self.nperseg, sym=False).astype(np.float32)
+        self.win_scale = float(np.sum(self.hann_win)) / 2.0
         self.time_axis = np.linspace(-self.waveform_sec, 0, self.wave_buffer_len)
 
         self.reader_thread: AudioReaderThread | None = None
@@ -122,10 +129,10 @@ class AudioAnalyzerApp(QMainWindow):
         self._init_ui()
         self.refresh_microphones()
 
-        # Timer for ~30 FPS UI & DSP updates
+        # 25 FPS (40 ms) UI & DSP refresh for smooth, low-CPU operation
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_plots_and_metrics)
-        self.timer.start(30)
+        self.timer.start(40)
 
     def _init_ui(self):
         central = QWidget()
@@ -159,45 +166,49 @@ class AudioAnalyzerApp(QMainWindow):
         top_bar.addStretch()
         main_layout.addLayout(top_bar)
 
-        # --- PyQtGraph Plots ---
-        pg.setConfigOptions(antialias=True)
+        # --- PyQtGraph Plots (antialias=False for fast software rendering) ---
+        pg.setConfigOptions(antialias=False)
 
-        # 1. Live Waveform Plot (2 s window)
-        self.wave_plot = pg.PlotWidget(title="Live Waveform (44.1 kHz, 2.0 s window)")
+        # 1. Live Waveform Plot (1.0 s window, peak-downsampled for speed)
+        self.wave_plot = pg.PlotWidget(title="Live Waveform (44.1 kHz, 1.0 s window)")
         self.wave_plot.setLabel("left", "Amplitude")
         self.wave_plot.setLabel("bottom", "Time", units="s")
         self.wave_plot.setYRange(-1.0, 1.0)
         self.wave_plot.setXRange(-self.waveform_sec, 0)
         self.wave_plot.showGrid(x=True, y=True, alpha=0.3)
         self.wave_curve = self.wave_plot.plot(
-            self.time_axis, self.wave_buffer, pen=pg.mkPen("#00e5ff", width=1.2)
+            self.time_axis,
+            self.wave_buffer,
+            pen=pg.mkPen("#00e5ff", width=1.0),
+            downsample=4,
+            downsampleMethod="peak",
         )
         main_layout.addWidget(self.wave_plot, stretch=1)
 
-        # 2. Live Spectrogram Plot (2 s rolling window, 0–4 kHz)
-        self.spec_plot = pg.PlotWidget(title="Live Spectrogram (2.0 s window, 0–4 kHz)")
+        # 2. Live Spectrogram Plot (1.0 s rolling window, 0–4 kHz)
+        self.spec_plot = pg.PlotWidget(title="Live Spectrogram (1.0 s window, 0–4 kHz, Pre-emphasized)")
         self.spec_plot.setLabel("left", "Frequency", units="Hz")
         self.spec_plot.setLabel("bottom", "Time", units="s")
         self.spec_img = pg.ImageItem()
         self.spec_plot.addItem(self.spec_img)
 
-        colormap = pg.colormap.get("viridis")
+        colormap = pg.colormap.get("inferno")
         self.spec_img.setLookupTable(colormap.getLookupTable())
-        self.spec_img.setLevels([-90, -10])
+        self.spec_img.setLevels([-80.0, -15.0])
 
-        freq_per_bin = self.sample_rate / self.nperseg
         dt = self.hop_size / self.sample_rate
+        total_width = self.num_spec_slices * dt
         self.spec_img.setRect(
-            -self.spec_window_sec,
-            0,
-            self.num_spec_slices * dt,
-            self.max_bin * freq_per_bin,
+            -total_width,
+            -0.5 * self.freq_per_bin,
+            total_width,
+            self.max_bin * self.freq_per_bin,
         )
-        self.spec_plot.setXRange(-self.spec_window_sec, 0)
-        self.spec_plot.setYRange(0, self.max_display_freq)
+        self.spec_plot.setXRange(-self.spec_window_sec, 0, padding=0)
+        self.spec_plot.setYRange(0, self.max_display_freq, padding=0)
 
         # Overlay lines for F0, F1, F2
-        self.f0_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#ff5252", width=1.5, style=Qt.PenStyle.DashLine))
+        self.f0_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#00e5ff", width=1.5, style=Qt.PenStyle.DashLine))
         self.f1_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#69f0ae", width=1.5, style=Qt.PenStyle.DashLine))
         self.f2_line = pg.InfiniteLine(angle=0, pen=pg.mkPen("#ffd740", width=1.5, style=Qt.PenStyle.DashLine))
         self.spec_plot.addItem(self.f0_line)
@@ -219,7 +230,7 @@ class AudioAnalyzerApp(QMainWindow):
         self.mic_combo.blockSignals(True)
         self.mic_combo.clear()
 
-        devices = []  # list of (label, (backend, device_id))
+        devices = []
         default_src = ""
 
         # 1. Try PulseAudio / PipeWire via pactl
@@ -292,8 +303,9 @@ class AudioAnalyzerApp(QMainWindow):
             self.reader_thread = None
 
         self.wave_buffer.fill(0)
-        self.spec_buffer.fill(-100.0)
+        self.spec_buffer.fill(-80.0)
         self.stft_remainder = np.array([], dtype=np.float32)
+        self.prev_sample = 0.0
 
         self.reader_thread = AudioReaderThread(backend, device_id, self.sample_rate)
         self.reader_thread.audio_chunk.connect(self._on_audio_chunk)
@@ -301,7 +313,7 @@ class AudioAnalyzerApp(QMainWindow):
         self.reader_thread.start()
 
     def _on_audio_chunk(self, samples: np.ndarray):
-        # 1. Update rolling waveform buffer
+        # 1. Update rolling raw waveform buffer
         n = len(samples)
         if n >= self.wave_buffer_len:
             self.wave_buffer[:] = samples[-self.wave_buffer_len :]
@@ -309,21 +321,27 @@ class AudioAnalyzerApp(QMainWindow):
             self.wave_buffer[:-n] = self.wave_buffer[n:]
             self.wave_buffer[-n:] = samples
 
-        # 2. Compute new STFT slices for the 2.0 s rolling spectrogram
-        combined = np.concatenate([self.stft_remainder, samples])
-        num_frames = (len(combined) - self.nperseg) // self.hop_size + 1
+        # 2. Apply continuous first-order pre-emphasis (y[n] = x[n] - 0.97*x[n-1])
+        emph = np.empty_like(samples)
+        emph[0] = samples[0] - 0.97 * self.prev_sample
+        emph[1:] = samples[1:] - 0.97 * samples[:-1]
+        self.prev_sample = float(samples[-1])
 
-        if num_frames > 0:
-            new_slices = np.empty((num_frames, self.max_bin), dtype=np.float32)
-            for i in range(num_frames):
-                start = i * self.hop_size
-                segment = combined[start : start + self.nperseg] * self.hann_win
-                spectrum = np.abs(np.fft.rfft(segment))[: self.max_bin] / self.nperseg
-                new_slices[i] = 20.0 * np.log10(spectrum + 1e-7)
+        # 3. Vectorized overlapping STFT (nperseg=1024, nfft=2048, hop=256)
+        combined = np.concatenate([self.stft_remainder, emph])
+        if len(combined) >= self.nperseg:
+            num_frames = (len(combined) - self.nperseg) // self.hop_size + 1
+            shape = (num_frames, self.nperseg)
+            strides = (combined.strides[0] * self.hop_size, combined.strides[0])
+            frames = np.lib.stride_tricks.as_strided(combined, shape=shape, strides=strides)
+
+            windowed = frames * self.hann_win
+            mag = np.abs(np.fft.rfft(windowed, n=self.nfft, axis=1))[:, : self.max_bin] / self.win_scale
+            db_slices = 20.0 * np.log10(np.maximum(mag, 1e-6)).astype(np.float32)
 
             k = min(num_frames, self.num_spec_slices)
             self.spec_buffer[:-k] = self.spec_buffer[k:]
-            self.spec_buffer[-k:] = new_slices[-k:]
+            self.spec_buffer[-k:] = db_slices[-k:]
 
             consumed = num_frames * self.hop_size
             self.stft_remainder = combined[consumed:]
