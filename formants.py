@@ -99,12 +99,12 @@ class AudioAnalyzerApp(QMainWindow):
 
         # --- Audio & DSP Parameters ---
         self.sample_rate = 44100
-        self.spec_window_sec = 2   # 250 ms spectrogram window
-        self.waveform_sec = 2      # 250 ms waveform window
+        self.spec_window_sec = 2.0    # 2.0 s spectrogram window
+        self.waveform_sec = 2.0       # 2.0 s waveform window
         self.nperseg = 512
         self.noverlap = 384
         self.hop_size = self.nperseg - self.noverlap  # 128 samples (~2.9 ms/slice)
-        self.max_display_freq = 5000
+        self.max_display_freq = 4000  # 0–4 kHz spectrogram cap
 
         self.num_spec_slices = int((self.spec_window_sec * self.sample_rate) / self.hop_size)
         self.max_bin = int(self.max_display_freq / (self.sample_rate / self.nperseg))
@@ -162,8 +162,8 @@ class AudioAnalyzerApp(QMainWindow):
         # --- PyQtGraph Plots ---
         pg.setConfigOptions(antialias=True)
 
-        # 1. Live Waveform Plot
-        self.wave_plot = pg.PlotWidget(title="Live Waveform (44.1 kHz, 250 ms window)")
+        # 1. Live Waveform Plot (2 s window)
+        self.wave_plot = pg.PlotWidget(title="Live Waveform (44.1 kHz, 2.0 s window)")
         self.wave_plot.setLabel("left", "Amplitude")
         self.wave_plot.setLabel("bottom", "Time", units="s")
         self.wave_plot.setYRange(-1.0, 1.0)
@@ -174,8 +174,8 @@ class AudioAnalyzerApp(QMainWindow):
         )
         main_layout.addWidget(self.wave_plot, stretch=1)
 
-        # 2. Live Spectrogram Plot (250 ms rolling window)
-        self.spec_plot = pg.PlotWidget(title="Live Spectrogram (250 ms window, 0–5000 Hz)")
+        # 2. Live Spectrogram Plot (2 s rolling window, 0–4 kHz)
+        self.spec_plot = pg.PlotWidget(title="Live Spectrogram (2.0 s window, 0–4 kHz)")
         self.spec_plot.setLabel("left", "Frequency", units="Hz")
         self.spec_plot.setLabel("bottom", "Time", units="s")
         self.spec_img = pg.ImageItem()
@@ -309,7 +309,7 @@ class AudioAnalyzerApp(QMainWindow):
             self.wave_buffer[:-n] = self.wave_buffer[n:]
             self.wave_buffer[-n:] = samples
 
-        # 2. Compute new STFT slices for the 250 ms rolling spectrogram
+        # 2. Compute new STFT slices for the 2.0 s rolling spectrogram
         combined = np.concatenate([self.stft_remainder, samples])
         num_frames = (len(combined) - self.nperseg) // self.hop_size + 1
 
