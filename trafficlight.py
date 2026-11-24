@@ -89,6 +89,7 @@ class TrafficLightAnalyzer(QMainWindow):
         self.setWindowTitle("Traffic Light & Stopping Distance Assistant")
         self.resize(620, 560)
         self.snipper = None
+        self.current_light: str | None = None
         self._init_ui()
 
     def _init_ui(self):
@@ -108,25 +109,34 @@ class TrafficLightAnalyzer(QMainWindow):
 
         self.speed_input = QDoubleSpinBox()
         self.speed_input.setRange(0.0, 250.0)
-        self.speed_input.setValue(65.0)
+        self.speed_input.setValue(25.0)
         self.speed_input.setSuffix(" km/h")
 
         self.distance_input = QDoubleSpinBox()
         self.distance_input.setRange(1.0, 500.0)
-        self.distance_input.setValue(22.0)
+        self.distance_input.setValue(10.0)
         self.distance_input.setSuffix(" m")
 
         self.reaction_input = QDoubleSpinBox()
         self.reaction_input.setRange(0.1, 5.0)
-        self.reaction_input.setValue(1.0)
+        self.reaction_input.setValue(2.5)
         self.reaction_input.setSingleStep(0.1)
         self.reaction_input.setSuffix(" s")
 
         self.decel_input = QDoubleSpinBox()
         self.decel_input.setRange(1.0, 12.0)
-        self.decel_input.setValue(6.0)
+        self.decel_input.setValue(3.0)
         self.decel_input.setSingleStep(0.5)
         self.decel_input.setSuffix(" m/s²")
+
+        # Recalculate immediately when any parameter changes
+        for spinbox in (
+            self.speed_input,
+            self.distance_input,
+            self.reaction_input,
+            self.decel_input,
+        ):
+            spinbox.valueChanged.connect(self.on_params_changed)
 
         form_layout.addRow("Current Speed:", self.speed_input)
         form_layout.addRow("Distance to Stop Line:", self.distance_input)
@@ -156,6 +166,11 @@ class TrafficLightAnalyzer(QMainWindow):
             "background-color: #333333; color: white; border-radius: 6px;"
         )
         main_layout.addWidget(self.decision_banner)
+
+    def on_params_changed(self):
+        """Re-evaluate decision live using the last detected traffic light."""
+        if self.current_light is not None:
+            self.evaluate_decision(self.current_light)
 
     def start_snip(self):
         self.hide()
@@ -286,6 +301,7 @@ class TrafficLightAnalyzer(QMainWindow):
 
         bgr = self._pixmap_to_bgr(pixmap)
         dominant, counts = self.detect_dominant_light(bgr)
+        self.current_light = dominant
 
         self.metrics_label.setText(
             f"Detected Pixels — Red: {counts['RED']} | Yellow: {counts['YELLOW']} | Green: {counts['GREEN']}  "
