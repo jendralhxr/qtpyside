@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Nov 24 16:51:14 2026
-
-@author: rdx
-"""
-
 import re
 import subprocess
 import sys
@@ -102,10 +94,10 @@ class AudioReaderThread(QThread):
 class AudioAnalyzerApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Real-Time Audio Waveform, Spectrogram, FFT & Formant Analyzer")
+        self.setWindowTitle("Real-Time Audio Waveform, Spectrogram, Raw FFT & Formant Analyzer")
         self.resize(1280, 920)
 
-        # --- Audio & Optimized Spectrogram / FFT Parameters ---
+        # --- Audio & Spectrogram Parameters ---
         self.sample_rate = 44100
         self.spec_window_sec = 1.0    # 1.0 s rolling spectrogram
         self.waveform_sec = 1.0       # 1.0 s rolling waveform
@@ -120,11 +112,18 @@ class AudioAnalyzerApp(QMainWindow):
         self.num_spec_slices = int(np.ceil((self.spec_window_sec * self.sample_rate) / self.hop_size))
         self.wave_buffer_len = int(self.waveform_sec * self.sample_rate)
 
+        # --- High-Resolution Raw FFT Parameters (No Pre-Emphasis) ---
+        self.raw_fft_size = 4096
+        self.raw_freq_per_bin = self.sample_rate / self.raw_fft_size
+        self.raw_max_bin = int(np.ceil(self.max_display_freq / self.raw_freq_per_bin)) + 1
+        self.raw_fft_freqs = np.arange(self.raw_max_bin, dtype=np.float32) * self.raw_freq_per_bin
+        self.raw_fft_db = np.full(self.raw_max_bin, -100.0, dtype=np.float32)
+        self.raw_hann_win = windows.hann(self.raw_fft_size, sym=False).astype(np.float32)
+        self.raw_win_scale = float(np.sum(self.raw_hann_win)) / 2.0
+
         # Rolling buffers (shape: [time_slices, freq_bins] for col-major ImageItem)
         self.wave_buffer = np.zeros(self.wave_buffer_len, dtype=np.float32)
         self.spec_buffer = np.full((self.num_spec_slices, self.max_bin), -80.0, dtype=np.float32)
-        self.fft_freqs = np.arange(self.max_bin, dtype=np.float32) * self.freq_per_bin
-        self.fft_db = np.full(self.max_bin, -90.0, dtype=np.float32)
         self.stft_remainder = np.array([], dtype=np.float32)
         self.prev_sample = 0.0
 
@@ -226,30 +225,31 @@ class AudioAnalyzerApp(QMainWindow):
 
         main_layout.addWidget(self.spec_plot, stretch=1)
 
-        # 3. Live Instantaneous FFT Spectrum Plot (0–4 kHz)
-        self.fft_plot = pg.PlotWidget(title="Live FFT Spectrum (0–4 kHz, Pre-emphasized)")
+        # 3. Raw Live FFT Spectrum Plot (0–4 kHz, Unfiltered, 4096-pt)
+        self.fft_plot = pg.PlotWidget(title="Raw Live FFT Spectrum (0–4 kHz, Unfiltered, 4096-pt)")
         self.fft_plot.setLabel("left", "Magnitude", units="dBFS")
         self.fft_plot.setLabel("bottom", "Frequency", units="Hz")
         self.fft_plot.setXRange(0, self.max_display_freq, padding=0)
-        self.fft_plot.setYRange(-90.0, 0.0, padding=0)
+        self.fft_plot.setYRange(-100.0, 0.0, padding=0)
         self.fft_plot.showGrid(x=True, y=True, alpha=0.3)
 
         self.fft_curve = self.fft_plot.plot(
-            self.fft_freqs,
-            self.fft_db,
-            pen=pg.mkPen("#ff6e40", width=1.5),
-            fillLevel=-90.0,
-            brush=pg.mkBrush(255, 110, 64, 45),
+            self.raw_fft_freqs,
+            self.raw_fft_db,
+            pen=pg.mkPen("#ff6e40", width=1.2),
         )
 
-        # Vertical overlay lines for F0, F1, F2 on FFT Spectrum
+        # Vertical overlay lines for F0, F1, F2 on Raw FFT Spectrum
         self.fft_f0_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("#00e5ff", width=1.5, style=Qt.PenStyle.DashLine))
         self.fft_f1_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("#69f0ae", width=1.5, style=Qt.PenStyle.DashLine))
         self.fft_f2_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("#ffd740", width=1.5, style=Qt.PenStyle.DashLine))
+        self.fft_f0_label = pg.InfLineLabel(self.fft_f0_line, text="F0", position=0.92, color="#00e5ff", anchor=(0, 0.5))
+        self.fft_f1_label = pg.InfLineLabel(self.fft_f1_line, text="F1", position=0.82, color="#69f0ae", anchor=(0, 0.5))
+        self.fft_f2_label = pg.InfLineLabel(self.fft_f2_line, text="F2", position=0.72, color="#ffd740", anchor=(0, 0.5))
         self.fft_plot.addItem(self.fft_f0_line)
         self.fft_plot.addItem(self.fft_f1_line)
         self.fft_plot.addItem(self.fft_f2_line)
-
+        
         main_layout.addWidget(self.fft_plot, stretch=1)
 
     def _create_readonly_box(self, label_text: str) -> tuple[QLabel, QLineEdit]:
@@ -339,7 +339,7 @@ class AudioAnalyzerApp(QMainWindow):
 
         self.wave_buffer.fill(0)
         self.spec_buffer.fill(-80.0)
-        self.fft_db.fill(-90.0)
+        self.raw_fft_db.fill(-100.0)
         self.stft_remainder = np.array([], dtype=np.float32)
         self.prev_sample = 0.0
 
@@ -357,7 +357,7 @@ class AudioAnalyzerApp(QMainWindow):
             self.wave_buffer[:-n] = self.wave_buffer[n:]
             self.wave_buffer[-n:] = samples
 
-        # 2. Apply continuous first-order pre-emphasis (y[n] = x[n] - 0.97*x[n-1])
+        # 2. Apply continuous first-order pre-emphasis (y[n] = x[n] - 0.97*x[n-1]) for spectrogram
         emph = np.empty_like(samples)
         emph[0] = samples[0] - 0.97 * self.prev_sample
         emph[1:] = samples[1:] - 0.97 * samples[:-1]
@@ -379,9 +379,6 @@ class AudioAnalyzerApp(QMainWindow):
             self.spec_buffer[:-k] = self.spec_buffer[k:]
             self.spec_buffer[-k:] = db_slices[-k:]
 
-            # Keep the most recent FFT slice for the live spectrum plot
-            self.fft_db = db_slices[-1].copy()
-
             consumed = num_frames * self.hop_size
             self.stft_remainder = combined[consumed:]
         else:
@@ -396,8 +393,11 @@ class AudioAnalyzerApp(QMainWindow):
         self.spec_img.setImage(spec_snapshot, autoLevels=False, levels=(-80.0, -15.0))
         self.spec_img.setRect(self.spec_rect)
 
-        # 3. Refresh Live FFT Spectrum
-        self.fft_curve.setData(self.fft_freqs, self.fft_db)
+        # 3. Compute & Refresh Raw Live FFT directly from un-pre-emphasized waveform
+        raw_slice = self.wave_buffer[-self.raw_fft_size :]
+        raw_mag = np.abs(np.fft.rfft(raw_slice * self.raw_hann_win))[: self.raw_max_bin] / self.raw_win_scale
+        self.raw_fft_db = 20.0 * np.log10(np.maximum(raw_mag, 1e-6)).astype(np.float32)
+        self.fft_curve.setData(self.raw_fft_freqs, self.raw_fft_db)
 
         # 4. Analyze the latest 50 ms frame for F0, F1, F2
         analysis_len = int(0.05 * self.sample_rate)
@@ -420,12 +420,15 @@ class AudioAnalyzerApp(QMainWindow):
         if f0 > 0:
             self.f0_line.setPos(f0)
             self.fft_f0_line.setPos(f0)
+            self.fft_f0_label.setText(f" F0: {f0:.1f} Hz")
         if f1 > 0:
             self.f1_line.setPos(f1)
             self.fft_f1_line.setPos(f1)
+            self.fft_f1_label.setText(f" F1: {f0:.1f} Hz")
         if f2 > 0:
             self.f2_line.setPos(f2)
             self.fft_f2_line.setPos(f2)
+            self.fft_f2_label.setText(f" F2: {f0:.1f} Hz")
 
     @staticmethod
     def estimate_f0(frame: np.ndarray, fs: int) -> float:
