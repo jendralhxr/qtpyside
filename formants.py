@@ -424,11 +424,11 @@ class AudioAnalyzerApp(QMainWindow):
         if f1 > 0:
             self.f1_line.setPos(f1)
             self.fft_f1_line.setPos(f1)
-            self.fft_f1_label.setText(f" F1: {f0:.1f} Hz")
+            self.fft_f1_label.setText(f" F1: {f1:.1f} Hz")
         if f2 > 0:
             self.f2_line.setPos(f2)
             self.fft_f2_line.setPos(f2)
-            self.fft_f2_label.setText(f" F2: {f0:.1f} Hz")
+            self.fft_f2_label.setText(f" F2: {f2:.1f} Hz")
 
     @staticmethod
     def estimate_f0(frame: np.ndarray, fs: int) -> float:
